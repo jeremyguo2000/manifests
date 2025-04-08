@@ -1,0 +1,11 @@
+#Client secret
+0l9RiAoV1oNBb82Y6JeiGMKFwigBZQft
+
+# old
+KEYCLOAK_ISSUER="http://10.254.50.50:7999/auth/realms/kubeflow"
+CLIENT_ID="kubeflow-oidc-authservice"
+CLIENT_SECRET="0l9RiAoV1oNBb82Y6JeiGMKFwigBZQft"
+REDIRECT_URI="http://10.254.50.50:8080/dex/callback"
+DEX_ISSUER="http://10.254.50.50:8080/dex"
+
+# new
