@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-debug-pod
+  namespace: devops-tools # Your namespace
+spec:
+  volumes:
+    - name: jenkins-home-volume
+      persistentVolumeClaim:
+        claimName: jenkins-pv-claim # Your PVC name
+  containers:
+    - name: debug-container
+      image: ubuntu:latest # Or any image with basic tools like 'vi' or 'nano'
+      command: ["sleep"]
+      args: ["infinity"] # doesn't depend on application logic
+      volumeMounts:
+        - name: jenkins-home-volume
+          mountPath: /data # We will mount the PVC here inside the debug pod
+  restartPolicy: Never

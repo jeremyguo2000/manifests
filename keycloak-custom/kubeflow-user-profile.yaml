@@ -1,0 +1,8 @@
+apiVersion: kubeflow.org/v1
+kind: Profile
+metadata:
+  name: kubeflow-user # This will be your namespace name too
+spec:
+  owner:
+    kind: User
+    name: kubeflow_user@gmail.com # Use the exact identity from the Dex logs

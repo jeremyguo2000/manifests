@@ -1,0 +1,282 @@
+# PIPELINE DEFINITION
+# Name: three-sided-coin-pipeline
+# Description: Defines a Kubeflow Pipeline that flips a three-sided coin
+#              and prints a message based on the outcome.
+components:
+  comp-condition-2:
+    dag:
+      tasks:
+        print-comp:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-print-comp
+          inputs:
+            parameters:
+              text:
+                runtimeValue:
+                  constant: Got heads!
+          taskInfo:
+            name: print-comp
+    inputDefinitions:
+      parameters:
+        pipelinechannel--flip-three-sided-coin-Output:
+          parameterType: STRING
+  comp-condition-3:
+    dag:
+      tasks:
+        print-comp-2:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-print-comp-2
+          inputs:
+            parameters:
+              text:
+                runtimeValue:
+                  constant: Got tails!
+          taskInfo:
+            name: print-comp-2
+    inputDefinitions:
+      parameters:
+        pipelinechannel--flip-three-sided-coin-Output:
+          parameterType: STRING
+  comp-condition-4:
+    dag:
+      tasks:
+        print-comp-3:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-print-comp-3
+          inputs:
+            parameters:
+              text:
+                runtimeValue:
+                  constant: Draw!
+          taskInfo:
+            name: print-comp-3
+    inputDefinitions:
+      parameters:
+        pipelinechannel--flip-three-sided-coin-Output:
+          parameterType: STRING
+  comp-condition-branches-1:
+    dag:
+      tasks:
+        condition-2:
+          componentRef:
+            name: comp-condition-2
+          inputs:
+            parameters:
+              pipelinechannel--flip-three-sided-coin-Output:
+                componentInputParameter: pipelinechannel--flip-three-sided-coin-Output
+          taskInfo:
+            name: condition-2
+          triggerPolicy:
+            condition: inputs.parameter_values['pipelinechannel--flip-three-sided-coin-Output']
+              == 'heads'
+        condition-3:
+          componentRef:
+            name: comp-condition-3
+          inputs:
+            parameters:
+              pipelinechannel--flip-three-sided-coin-Output:
+                componentInputParameter: pipelinechannel--flip-three-sided-coin-Output
+          taskInfo:
+            name: condition-3
+          triggerPolicy:
+            condition: '!(inputs.parameter_values[''pipelinechannel--flip-three-sided-coin-Output'']
+              == ''heads'') && inputs.parameter_values[''pipelinechannel--flip-three-sided-coin-Output'']
+              == ''tails'''
+        condition-4:
+          componentRef:
+            name: comp-condition-4
+          inputs:
+            parameters:
+              pipelinechannel--flip-three-sided-coin-Output:
+                componentInputParameter: pipelinechannel--flip-three-sided-coin-Output
+          taskInfo:
+            name: condition-4
+          triggerPolicy:
+            condition: '!(inputs.parameter_values[''pipelinechannel--flip-three-sided-coin-Output'']
+              == ''heads'') && !(inputs.parameter_values[''pipelinechannel--flip-three-sided-coin-Output'']
+              == ''tails'')'
+    inputDefinitions:
+      parameters:
+        pipelinechannel--flip-three-sided-coin-Output:
+          parameterType: STRING
+  comp-flip-three-sided-coin:
+    executorLabel: exec-flip-three-sided-coin
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-print-comp:
+    executorLabel: exec-print-comp
+    inputDefinitions:
+      parameters:
+        text:
+          parameterType: STRING
+  comp-print-comp-2:
+    executorLabel: exec-print-comp-2
+    inputDefinitions:
+      parameters:
+        text:
+          parameterType: STRING
+  comp-print-comp-3:
+    executorLabel: exec-print-comp-3
+    inputDefinitions:
+      parameters:
+        text:
+          parameterType: STRING
+defaultPipelineRoot: minio://mlpipeline/artifacts
+deploymentSpec:
+  executors:
+    exec-flip-three-sided-coin:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - flip_three_sided_coin
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef flip_three_sided_coin() -> str:\n    \"\"\"\n    A simple component\
+          \ that simulates flipping a three-sided coin,\n    returning 'heads', 'tails',\
+          \ or 'draw'.\n    \"\"\"\n    import random\n    return random.choice(['heads',\
+          \ 'tails', 'draw'])\n\n"
+        image: python:3.9
+    exec-print-comp:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - print_comp
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef print_comp(text: str):\n    \"\"\"\n    A simple component that\
+          \ prints the given text.\n    \"\"\"\n    print(text)\n\n"
+        image: python:3.9
+    exec-print-comp-2:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - print_comp
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef print_comp(text: str):\n    \"\"\"\n    A simple component that\
+          \ prints the given text.\n    \"\"\"\n    print(text)\n\n"
+        image: python:3.9
+    exec-print-comp-3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - print_comp
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef print_comp(text: str):\n    \"\"\"\n    A simple component that\
+          \ prints the given text.\n    \"\"\"\n    print(text)\n\n"
+        image: python:3.9
+pipelineInfo:
+  description: 'Defines a Kubeflow Pipeline that flips a three-sided coin
+
+    and prints a message based on the outcome.'
+  name: three-sided-coin-pipeline
+root:
+  dag:
+    tasks:
+      condition-branches-1:
+        componentRef:
+          name: comp-condition-branches-1
+        dependentTasks:
+        - flip-three-sided-coin
+        inputs:
+          parameters:
+            pipelinechannel--flip-three-sided-coin-Output:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: flip-three-sided-coin
+        taskInfo:
+          name: condition-branches-1
+      flip-three-sided-coin:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-flip-three-sided-coin
+        taskInfo:
+          name: flip-three-sided-coin
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.11.0
