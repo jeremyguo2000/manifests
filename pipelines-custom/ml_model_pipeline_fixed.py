@@ -134,7 +134,7 @@ def train_and_save_model(
 
 @dsl.component(
     base_image="python:3.9-slim",
-    packages_to_install=["kubernetes"]
+    packages_to_install=["kubernetes==30.1.0"] # Ensure kubernetes version < 31 is installed in this image
 )
 def deploy_model(
     model_storage_uri: str,
@@ -152,8 +152,13 @@ def deploy_model(
     config.load_incluster_config()
     custom_api = client.CustomObjectsApi()
 
+    # Define common KServe API group and version for clarity
+    kserve_group = "serving.kserve.io"
+    kserve_version = "v1beta1"
+    kserve_plural = "inferenceservices"
+
     inferenceservice_manifest = {
-        "apiVersion": "serving.kserve.io/v1beta1",
+        "apiVersion": f"{kserve_group}/{kserve_version}",
         "kind": "InferenceService",
         "metadata": {
             "name": model_name,
@@ -162,8 +167,30 @@ def deploy_model(
         "spec": {
             "predictor": {
                 "sklearn": {
-                    "storageUri": model_storage_uri
-                }
+                    "storageUri": model_storage_uri,
+                },
+                "env": [ # <--- This is the correct location for KServe's automated injection
+                    {
+                        "name": "AWS_ACCESS_KEY_ID",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "minio-credentials", # Name of your secret
+                                "key": "AWS_ACCESS_KEY_ID" # Key within the secret
+                            }
+                        }
+                    },
+                    {
+                        "name": "AWS_SECRET_ACCESS_KEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "minio-credentials",
+                                "key": "AWS_SECRET_ACCESS_KEY"
+                            }
+                        }
+                    },
+                    {"name": "S3_ENDPOINT", "value": "http://minio-service.kubeflow.svc.cluster.local:9000"},
+                    {"name": "S3_USE_HTTPS", "value": "false"}
+                ]
             }
         }
     }
@@ -171,27 +198,31 @@ def deploy_model(
     print(f"Attempting to deploy KServe InferenceService '{model_name}' in namespace '{namespace}'...")
     try:
         try:
+            # Check if InferenceService exists
             custom_api.get_namespaced_custom_object(
-                group="serving.kserve.io",
-                version="v1beta1",
+                group=kserve_group,
+                version=kserve_version,
                 name=model_name,
-                namespace=namespace
+                namespace=namespace,
+                plural=kserve_plural
             )
             print(f"InferenceService '{model_name}' already exists. Replacing...")
             custom_api.replace_namespaced_custom_object(
-                group="serving.kserve.io",
-                version="v1beta1",
+                group=kserve_group,
+                version=kserve_version,
                 name=model_name,
                 namespace=namespace,
+                plural=kserve_plural,
                 body=inferenceservice_manifest
             )
         except client.ApiException as e:
             if e.status == 404:
                 print(f"InferenceService '{model_name}' not found. Creating new one...")
                 custom_api.create_namespaced_custom_object(
-                    group="serving.kserve.io",
-                    version="v1beta1",
+                    group=kserve_group,
+                    version=kserve_version,
                     namespace=namespace,
+                    plural=kserve_plural,
                     body=inferenceservice_manifest
                 )
             else:
@@ -207,10 +238,11 @@ def deploy_model(
             time.sleep(retry_delay_seconds)
             try:
                 isvc_status = custom_api.get_namespaced_custom_object(
-                    group="serving.kserve.io",
-                    version="v1beta1",
+                    group=kserve_group,
+                    version=kserve_version,
                     name=model_name,
-                    namespace=namespace
+                    namespace=namespace,
+                    plural=kserve_plural
                 )
 
                 conditions = isvc_status.get("status", {}).get("conditions", [])
