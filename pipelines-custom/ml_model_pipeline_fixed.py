@@ -103,9 +103,13 @@ def train_and_save_model(
         print(f"An unexpected error occurred during model saving: {e}")
         raise
 
+
 @dsl.component(
-    packages_to_install=["kubernetes", "kserve"],
     base_image="python:3.9",
+    packages_to_install=[
+        "kubernetes>=28.0.0,<31.0.0",
+        "kserve>=0.11.0"
+    ]
 )
 def deploy_model(
     model_name: str,
@@ -113,131 +117,199 @@ def deploy_model(
     namespace: str,
     kserve_group: str = "serving.kserve.io",
     kserve_version: str = "v1beta1",
+    minio_secret_name: str = "minio-credentials" # Add this parameter for clarity
 ) -> str:
-    # Import necessary libraries inside the component function
-    from kubernetes import client as k8s
+    """
+    Deploy model using KServe with proper object creation and MinIO credentials.
+    """
+    from kubernetes import client, config
     import json
     import time
-    from kserve import KServeClient
-    # Import necessary KServe models (these are classes, not modules)
-    from kserve import V1beta1InferenceService, V1beta1InferenceServiceSpec, V1beta1PredictorSpec, V1beta1SKLearnSpec
+    import yaml
 
-    # Initialize KServeClient
-    kserve_client = KServeClient()
-
-    # Define the InferenceService object using KServe's classes
-    predictor_spec = V1beta1PredictorSpec(
-        sklearn=V1beta1SKLearnSpec(
-            storage_uri=model_storage_uri
-        )
-    )
-
-    inferenceservice_spec = V1beta1InferenceServiceSpec(
-        predictor=predictor_spec
-    )
-
-    inferenceservice_object = V1beta1InferenceService(
-        api_version=f"{kserve_group}/{kserve_version}",
-        kind="InferenceService",
-        metadata=k8s.V1ObjectMeta( # Use k8s.V1ObjectMeta for metadata
-            name=model_name,
-            namespace=namespace,
-            annotations={
-                "serving.kserve.io/s3-secret": "minio-credentials"
-            }
-        ),
-        spec=inferenceservice_spec
-    )
-
-    print(f"Creating InferenceService: {model_name} in namespace: {namespace}")
     try:
-        # Pass the constructed InferenceService object to the create method
-        kserve_client.create(inferenceservice_object, namespace=namespace)
-        print(f"InferenceService {model_name} created/updated successfully.")
-        print(f"Waiting for InferenceService {model_name} to be ready...")
+        # Try to load in-cluster config first, then local config
+        try:
+            config.load_incluster_config()
+            print("Loaded in-cluster Kubernetes config")
+        except:
+            try:
+                config.load_kube_config()
+                print("Loaded local Kubernetes config")
+            except Exception as e:
+                print(f"Failed to load Kubernetes config: {e}")
+                raise
 
-        timeout_seconds = 600 # 10 minutes timeout
-        poll_interval_seconds = 10 # Check every 10 seconds
+        # Create InferenceService manifest
+        inferenceservice_manifest = {
+            "apiVersion": f"{kserve_group}/{kserve_version}",
+            "kind": "InferenceService",
+            "metadata": {
+                "name": model_name,
+                "namespace": namespace,
+                "annotations": {
+                    "serving.kserve.io/s3-secret-name": minio_secret_name, # Use the parameter
+                    "serving.kserve.io/s3-usehttps": "0"
+                }
+            },
+            "spec": {
+                "predictor": {
+                    "sklearn": {
+                        "storageUri": model_storage_uri,
+                        "resources": {
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "512Mi"
+                            },
+                            "limits": {
+                                "cpu": "1",
+                                "memory": "1Gi"
+                            }
+                        }
+                    },
+                    # --- ADD THIS SECTION ---
+                    "env": [
+                        {
+                            "name": "AWS_ACCESS_KEY_ID",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": minio_secret_name,
+                                    "key": "AWS_ACCESS_KEY_ID"
+                                }
+                            }
+                        },
+                        {
+                            "name": "AWS_SECRET_ACCESS_KEY",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": minio_secret_name,
+                                    "key": "AWS_SECRET_ACCESS_KEY"
+                                }
+                            }
+                        }
+                    ]
+                    # --- END ADDITION ---
+                }
+            }
+        }
+
+        print(f"Creating InferenceService: {model_name} in namespace: {namespace}")
+        print(f"Storage URI: {model_storage_uri}")
+
+        # Use Kubernetes API directly to create the InferenceService
+        api_client = client.ApiClient()
+        custom_api = client.CustomObjectsApi(api_client)
+
+        try:
+            # Try to create the InferenceService
+            custom_api.create_namespaced_custom_object(
+                group=kserve_group,
+                version=kserve_version,
+                namespace=namespace,
+                plural="inferenceservices",
+                body=inferenceservice_manifest
+            )
+            print(f"InferenceService {model_name} created successfully.")
+        except client.exceptions.ApiException as e:
+            if e.status == 409:  # Conflict - resource already exists
+                print(f"InferenceService {model_name} already exists. Attempting to patch...")
+                # Update the existing resource
+                custom_api.patch_namespaced_custom_object(
+                    group=kserve_group,
+                    version=kserve_version,
+                    namespace=namespace,
+                    plural="inferenceservices",
+                    name=model_name,
+                    body=inferenceservice_manifest
+                )
+                print(f"InferenceService {model_name} updated successfully.")
+            else:
+                raise
+
+        # Wait for InferenceService to be ready (rest of your wait logic is fine)
+        print(f"Waiting for InferenceService {model_name} to be ready...")
+        timeout_seconds = 600
+        poll_interval_seconds = 15
         start_time = time.time()
-        service_url = None # Initialize service_url outside the loop
+        service_url = None
 
         while True:
             if (time.time() - start_time) > timeout_seconds:
                 raise TimeoutError(f"InferenceService {model_name} did not become ready within {timeout_seconds} seconds.")
 
             try:
-                # Fetch the InferenceService, which might be a dictionary or an object
-                status_response = kserve_client.get(model_name, namespace=namespace)
+                status_response = custom_api.get_namespaced_custom_object(
+                    group=kserve_group,
+                    version=kserve_version,
+                    namespace=namespace,
+                    plural="inferenceservices",
+                    name=model_name
+                )
 
                 is_ready = False
-                current_conditions = 'N/A' # To store conditions for logging
+                current_conditions = 'N/A'
 
-                # --- Robust Status Checking (Handles both dict and object responses) ---
-                if isinstance(status_response, dict):
-                    # Manual parsing for dictionary status
-                    if 'status' in status_response and 'conditions' in status_response['status']:
-                        conditions = status_response['status']['conditions']
+                if 'status' in status_response:
+                    status = status_response['status']
+
+                    if 'conditions' in status:
+                        conditions = status['conditions']
                         current_conditions = conditions
+
                         for condition in conditions:
                             if condition.get('type') == 'Ready' and condition.get('status') == 'True':
                                 is_ready = True
-                                # Attempt to get URL from dict if available
-                                if 'address' in status_response['status'] and 'url' in status_response['status']['address']:
-                                    service_url = status_response['status']['address']['url']
                                 break
-                elif hasattr(status_response, 'status') and hasattr(status_response.status, 'is_ready'):
-                    # KServe object with an 'is_ready' property
-                    is_ready = status_response.status.is_ready
-                    current_conditions = status_response.status.conditions if hasattr(status_response.status, 'conditions') else 'N/A'
-                    # Attempt to get URL from object if available
-                    if hasattr(status_response.status, 'address') and hasattr(status_response.status.address, 'url'):
-                        service_url = status_response.status.address.url
-                else:
-                    # Fallback for unexpected response format, log and continue polling
-                    print(f"Still waiting for {model_name}. Unexpected status response format. Response: {status_response}")
+
+                    if 'address' in status and 'url' in status['address']:
+                        service_url = status['address']['url']
 
                 if is_ready:
                     print(f"InferenceService {model_name} is ready.")
                     if service_url:
-                        break # Exit loop if ready and URL is found
+                        break
                     else:
-                        print("InferenceService is ready but URL not found yet, retrying...")
-                        time.sleep(poll_interval_seconds)
+                        print("Service is ready but URL not available yet, continuing to wait...")
                 else:
-                    print(f"Still waiting for {model_name}. Current status conditions: {current_conditions}")
-                    time.sleep(poll_interval_seconds)
+                    print(f"Still waiting for {model_name}. Current status: {current_conditions}")
 
-            except k8s.ApiException as e: # Corrected: Use k8s.ApiException
+                time.sleep(poll_interval_seconds)
+
+            except client.exceptions.ApiException as e:
                 if e.status == 404:
                     print(f"InferenceService {model_name} not found yet, retrying...")
                     time.sleep(poll_interval_seconds)
                 else:
                     print(f"Kubernetes API error while waiting for InferenceService: {e}")
-                    raise # Re-raise other API exceptions
+                    raise
             except Exception as e:
                 print(f"An unexpected error occurred while waiting for InferenceService: {e}")
                 raise
 
-        # Ensure service_url is fetched correctly after the loop
         if not service_url:
-            # One final attempt to get the URL if it wasn't set in the loop
-            final_status_response = kserve_client.get(model_name, namespace=namespace)
-            if isinstance(final_status_response, dict) and 'status' in final_status_response and 'address' in final_status_response['status'] and 'url' in final_status_response['status']['address']:
-                service_url = final_status_response['status']['address']['url']
-            elif hasattr(final_status_response, 'status') and hasattr(final_status_response.status, 'address') and hasattr(final_status_response.status.address, 'url'):
-                service_url = final_status_response.status.address.url
-            else:
-                raise RuntimeError("Failed to retrieve InferenceService URL after it reported ready.")
+            try:
+                final_status = custom_api.get_namespaced_custom_object(
+                    group=kserve_group,
+                    version=kserve_version,
+                    namespace=namespace,
+                    plural="inferenceservices",
+                    name=model_name
+                )
 
+                if 'status' in final_status and 'address' in final_status['status'] and 'url' in final_status['status']['address']:
+                    service_url = final_status['status']['address']['url']
+                else:
+                    service_url = f"http://{model_name}-predictor-default.{namespace}.svc.cluster.local/v1/models/{model_name}:predict"
+                    print(f"Using constructed service URL: {service_url}")
+            except Exception as e:
+                print(f"Warning: Could not retrieve service URL, using default: {e}")
+                service_url = f"http://{model_name}-predictor-default.{namespace}.svc.cluster.local/v1/models/{model_name}:predict"
 
         print(f"Model serving URL: {service_url}")
         return service_url
 
-    except k8s.ApiException as e:
-        print(f"Error creating/updating InferenceService: {e}")
-        raise
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred during model deployment: {e}")
         raise
 
 @dsl.component(
@@ -254,35 +326,69 @@ def test_prediction(
     import requests
     import numpy as np
     import json
+    import time
 
     print(f"Testing model at URL: {model_serving_url}")
 
+    # Sample input data
     sample_input = [[5.0]]
-
     headers = {'Content-Type': 'application/json'}
     payload = {
         "instances": sample_input
     }
 
-    try:
-        response = requests.post(model_serving_url, headers=headers, json=payload)
-        response.raise_for_status() # Raise an exception for HTTP errors
+    # Retry mechanism for prediction testing
+    max_retries = 5
+    retry_delay = 30  # seconds
 
-        predictions = response.json().get('predictions')
+    for attempt in range(max_retries):
+        try:
+            print(f"Prediction attempt {attempt + 1}/{max_retries}")
+            response = requests.post(model_serving_url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()  # Raise an exception for HTTP errors
 
-        print(f"Prediction successful!")
-        print(f"Input: {sample_input}")
-        print(f"Predictions: {predictions}")
+            predictions = response.json().get('predictions')
 
-        with open(prediction_result_path, "w") as f:
-            f.write(json.dumps(predictions))
+            print(f"Prediction successful!")
+            print(f"Input: {sample_input}")
+            print(f"Predictions: {predictions}")
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error during prediction request to {model_serving_url}: {e}")
-        raise
-    except Exception as e:
-        print(f"An unexpected error occurred during prediction testing: {e}")
-        raise
+            with open(prediction_result_path, "w") as f:
+                f.write(json.dumps({
+                    "input": sample_input,
+                    "predictions": predictions,
+                    "status": "success"
+                }))
+            
+            return  # Success, exit the function
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error during prediction request (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print("All prediction attempts failed.")
+                # Write failure result
+                with open(prediction_result_path, "w") as f:
+                    f.write(json.dumps({
+                        "input": sample_input,
+                        "predictions": None,
+                        "status": "failed",
+                        "error": str(e)
+                    }))
+                raise
+        except Exception as e:
+            print(f"An unexpected error occurred during prediction testing: {e}")
+            with open(prediction_result_path, "w") as f:
+                f.write(json.dumps({
+                    "input": sample_input,
+                    "predictions": None,
+                    "status": "failed",
+                    "error": str(e)
+                }))
+            raise
+
 
 # --- Kubeflow Pipeline Definition ---
 
@@ -298,8 +404,10 @@ def ml_model_lifecycle_pipeline(
     """
     Defines the end-to-end ML model lifecycle pipeline.
     """
+    # Step 1: Prepare data
     prepare_data_task = prepare_data()
 
+    # Step 2: Train and save model
     train_and_save_model_task = train_and_save_model(
         data=prepare_data_task.outputs['data'],
         model_name=model_name,
@@ -310,29 +418,36 @@ def ml_model_lifecycle_pipeline(
         model_save_path_prefix=MODEL_SAVE_PATH_PREFIX
     )
 
+    # Step 3: Deploy model
     deploy_model_task = deploy_model(
         model_storage_uri=train_and_save_model_task.output,
         model_name=model_name,
         namespace=namespace
     )
 
+    # Step 4: Test prediction
     test_prediction_task = test_prediction(
         model_serving_url=deploy_model_task.output
     )
     test_prediction_task.after(deploy_model_task)
 
+
 # --- Main execution block ---
 if __name__ == "__main__":
+    # Check if cookie is set
     if OAUTH2_PROXY_COOKIE == "YOUR_OAUTH2_PROXY_KUBEFLOW_COOKIE_VALUE_HERE":
         print("\n!!! IMPORTANT: Please replace 'YOUR_OAUTH2_PROXY_KUBEFLOW_COOKIE_VALUE_HERE' ")
         print("!!!          with your actual 'oauth2_proxy_kubeflow' cookie value.   ")
-        print("!!!          Refer to the comments in the script for instructions.     \n")
+        print("!!!          You can find this in your browser's developer tools     ")
+        print("!!!          under Application > Cookies when logged into Kubeflow.  \n")
         exit(1)
 
+    # Compile pipeline
     pipeline_filename = "ml_model_lifecycle_pipeline.yaml"
     Compiler().compile(ml_model_lifecycle_pipeline, package_path=pipeline_filename)
     print(f"Kubeflow Pipeline compiled to '{pipeline_filename}'")
 
+    # Connect to Kubeflow Pipelines
     print(f"Connecting to Kubeflow Pipelines at: {KUBEFLOW_PIPELINES_HOST}")
     try:
         client = Client(host=KUBEFLOW_PIPELINES_HOST, cookies=f"oauth2_proxy_kubeflow={OAUTH2_PROXY_COOKIE}")
@@ -340,6 +455,7 @@ if __name__ == "__main__":
         print(f"Error connecting to KFP client. Check your host URL and cookie: {e}")
         exit(1)
 
+    # Create or get experiment
     experiment_name = "Model Lifecycle Demo"
     try:
         experiment = client.get_experiment(experiment_name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
@@ -348,6 +464,7 @@ if __name__ == "__main__":
         experiment = client.create_experiment(name=experiment_name, namespace=KUBEFLOW_NAMESPACE)
         print(f"Created new experiment: '{experiment_name}' (ID: {experiment.experiment_id})")
 
+    # Submit pipeline run
     run = client.create_run_from_pipeline_package(
         pipeline_file=pipeline_filename,
         arguments={
