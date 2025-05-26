@@ -14,6 +14,7 @@ MODEL_SAVE_PATH_PREFIX = f"s3://{MINIO_BUCKET}/models"
 KUBEFLOW_PIPELINES_HOST = "http://10.254.50.50:8080/pipeline"
 KUBEFLOW_NAMESPACE = "kubeflow-user"
 
+# --- IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR ACTUAL COOKIE VALUE ---
 OAUTH2_PROXY_COOKIE = "L2x3oXCE81tKY8WVYgnUzCkBcZrPc39kfxbM03YFGdG_7WwoIyCcEi7UIE7rG8s2vYJoISnfOZ6Vx_ETk98TrVvNOoEd1a_Zmi_8IZljE5GFnNiGOt_vlBiqDXc3-mMCd4sUIzIL7B9L9XD4RiqmdXDIg2HEY5tgS1RmwV4H3DsoFRCBK7wv_asdhcVdB0CmfKGKOlvVTNhCE09DHt1XPS2PGHH9zzytjG2oyZ5_PGRjJdsswbhh7NAXK_0ZjK4f82iJu152CnVpnjkdm-NjkAtoWgl4IJZVAMwZ0-GI39DGeh3rnfNpor6Fi7jKpAbZ7LyBEq3jvbrEHgGwAhVb0xJ7ONymzbNaiQCxhEZOT8r_4GEXzluuSyxIZ22BWJ0V9vT34jt5LJimAFfJN_eL6iKH8WTrn8OL7wxsZzq1kf3Ng9NpRQ9G9MX71ViexaC-T6HIrXhyhbesKYLblW_dG5DeF9dYCapiYXAzziVei2jNlPsrRpYDMgzgpWhJKSm0zmvOy9_xGdJ1bhQKERwbAw3yuYo4R4aWmGbViYzxW89fzsO2gVTCQ9ro1x1YDaXKUop23wWD56IyXKNkpnqcBz7EfytaRpAwNKO8xSrjV-pQCjsqlx3-Kap_vHZZ_blA6mhHzoPvA3mY-V4as9eAXXa152XioBlm4yUKykaN5rUKVEfv94ClbzYBdv4o_Clbo1E5odV-9atapfza6lQ9DVFPfC47OLRpohDLn1FJrkbRzpfXT-10Yg6_qgKYX0uZjO5HTwJ9TIgG-fVB1abP20KGubureCay5FnkTj15jOLHGT0nZXWyfC4niPsJJOb2k51Q8PAxIS07x23gN_jvl9m4UsOpv2O-LQQx97tYplZdXazD94upEVhAnFxgJBQVnA9cQWNcqI7gEul4fUe5Hio0xlatUnM0lOCdnyert0oSR6ocDZ-qBlnqNaT7bKwwF1bkrqhKwZRboZRWZ-ByRQ4F6j1OG8Ah74SJhqXfRtvRr4WEeQFkM4wlVZyh0uJ6rW39qRIer--cIap-coVSgNEkHeyBkeTNlNTETlhNwkqf9LA0LOyNMRCrnJFpGM-W7wtTM_fdkuCC1ko3LGXgA5--2s-s9l0UunYkVuHqvg9nvMoWyvhCMIti0oKcJTYwdpskRUOZwHlbUu7Y6fOgaEDwAU3T-xOovaGEJ-dWKEVZ4MAEp-RRZcGhsBltsulB91r1pVW6PbgZuy-GpNh_qdq-tnLjfOpoiZFLlaLnqcLRFPP5XY__-EUvMeLvW4Y9GNszouNho6eCnVapZdnvWFzkzoX2KjkG3wYv-2VPf6QbiSVVFbwWmL0DVraMv-l9yF9lAtwn7PNQflZMOklQx61SCUfq77brMMVqwmNxTWK2QMSMnuxErYI9aSc2NX43MtENyi4kxugcNlPffNXU6xdrN-SMtucPmcf84P65i2gsr_fBguTomebM-7SOnUgEQeZRw6UUtYALdrgKNuuHYBmdCeCi07uhB-KuElok0RaIbZTGCIbgufyCa3qaxrO7apS_IT7cDTCMXzkS_4BgfNZPDDkNUVGZz5UTSVTZNwgTwP7O9GpE7pF6HJMGrTz2hzrIRF1bkKUai00u42S8uPMa6r5zwM1t295M3E22IqL2xVTi3EEln4wHMQpikuh9V3siCDGgKhT2YnL7KZPfa-hsRqCUGzPDozXDNt8pZpYdXpIOCssNh650ROJ7O1XtB7zrn4P6eKuVQ3eUagL2njZRXneo-Fz1oboFfPBeLl12dYKnBZIpVuFwPcsp7nOJfGcwXgzm5hLkkdn2HJCL8pSGYtkYj-qoHs6RJISUidgtNwwJiOijIv17bUfWQlb0OgmQM8sFk-iAbyk6M9PuNH4w4898BoymmWY0ggJjyPBDgeYGZ3N54Lv2k_N80pt2dWBbfFspmBDITHyMozC0jHZvacJBAexkcfOclXXGEcuWBax5fVQh7Up58l8uyVUa0zbS7qtvAKp8VHHgMe0JrLmeMAweN7rfj1A3qnZnzdWCDCksncRp3m9vQuASPT0M-AXGhPQecZuH0vkdnRDqp-K9HDUFXbVsu9iPtPd1vI3akM_AqSL-pBCpQKOKpefjUatw569hAyODtwc-0QK7C5Z2kPyi3JmhDTOrUibuORzuKePfTDekI-W8Z_3Ad-LrulAMY08hF-kXr2LXosAif4dz72ONHPm7s-gDNjFMHJTt20O1qS_6Aot7xO4Viej3qXUbqIdoFA54Y4saaD-9eVxDqY_NI1z4|1748227448|epQvNv1_TcHhNfKy5pf0w8dM12hTAMaB59OFySfTldI="
 
 # --- Kubeflow Pipeline Components ---
@@ -35,7 +36,6 @@ def prepare_data(data: dsl.OutputPath(dsl.Dataset)):
     X, y = make_regression(n_samples=100, n_features=1, noise=20, random_state=42)
     dataset_content = {'X': X, 'y': y}
 
-    # Save the data to the provided output path (which is now a Dataset artifact)
     joblib.dump(dataset_content, data)
     print(f"Synthetic data prepared and saved to {data}")
 
@@ -62,23 +62,19 @@ def train_and_save_model(
     from minio.error import S3Error
     import os
 
-    # Load data from the provided InputPath (which is a Dataset artifact)
     dataset_content = joblib.load(data)
     X = dataset_content['X']
     y = dataset_content['y']
 
-    # Train model
     model = LinearRegression()
     model.fit(X, y)
     print("Model training complete.")
 
-    # Save model locally first (necessary before uploading)
     local_model_filename = "model.joblib"
     local_model_path = os.path.join("/tmp", local_model_filename)
     joblib.dump(model, local_model_path)
     print(f"Model saved locally to {local_model_path}")
 
-    # Upload model to MinIO
     try:
         client = Minio(
             minio_endpoint,
@@ -107,7 +103,6 @@ def train_and_save_model(
         print(f"An unexpected error occurred during model saving: {e}")
         raise
 
-
 @dsl.component(
     packages_to_install=["kubernetes", "kserve"],
     base_image="python:3.9",
@@ -124,12 +119,13 @@ def deploy_model(
     import json
     import time
     from kserve import KServeClient
+    # Import necessary KServe models (these are classes, not modules)
     from kserve import V1beta1InferenceService, V1beta1InferenceServiceSpec, V1beta1PredictorSpec, V1beta1SKLearnSpec
 
     # Initialize KServeClient
     kserve_client = KServeClient()
 
-    # Define the InferenceService object
+    # Define the InferenceService object using KServe's classes
     predictor_spec = V1beta1PredictorSpec(
         sklearn=V1beta1SKLearnSpec(
             storage_uri=model_storage_uri
@@ -143,7 +139,7 @@ def deploy_model(
     inferenceservice_object = V1beta1InferenceService(
         api_version=f"{kserve_group}/{kserve_version}",
         kind="InferenceService",
-        metadata=k8s.V1ObjectMeta(
+        metadata=k8s.V1ObjectMeta( # Use k8s.V1ObjectMeta for metadata
             name=model_name,
             namespace=namespace,
             annotations={
@@ -155,46 +151,85 @@ def deploy_model(
 
     print(f"Creating InferenceService: {model_name} in namespace: {namespace}")
     try:
+        # Pass the constructed InferenceService object to the create method
         kserve_client.create(inferenceservice_object, namespace=namespace)
         print(f"InferenceService {model_name} created/updated successfully.")
         print(f"Waiting for InferenceService {model_name} to be ready...")
 
-        # --- Manual polling for InferenceService readiness ---
         timeout_seconds = 600 # 10 minutes timeout
         poll_interval_seconds = 10 # Check every 10 seconds
         start_time = time.time()
+        service_url = None # Initialize service_url outside the loop
 
         while True:
             if (time.time() - start_time) > timeout_seconds:
                 raise TimeoutError(f"InferenceService {model_name} did not become ready within {timeout_seconds} seconds.")
 
             try:
-                status = kserve_client.get(model_name, namespace=namespace)
-                if status and status.status and hasattr(status.status, 'is_ready') and status.status.is_ready:
-                    print(f"InferenceService {model_name} is ready.")
-                    break # Exit loop if ready
+                # Fetch the InferenceService, which might be a dictionary or an object
+                status_response = kserve_client.get(model_name, namespace=namespace)
+
+                is_ready = False
+                current_conditions = 'N/A' # To store conditions for logging
+
+                # --- Robust Status Checking (Handles both dict and object responses) ---
+                if isinstance(status_response, dict):
+                    # Manual parsing for dictionary status
+                    if 'status' in status_response and 'conditions' in status_response['status']:
+                        conditions = status_response['status']['conditions']
+                        current_conditions = conditions
+                        for condition in conditions:
+                            if condition.get('type') == 'Ready' and condition.get('status') == 'True':
+                                is_ready = True
+                                # Attempt to get URL from dict if available
+                                if 'address' in status_response['status'] and 'url' in status_response['status']['address']:
+                                    service_url = status_response['status']['address']['url']
+                                break
+                elif hasattr(status_response, 'status') and hasattr(status_response.status, 'is_ready'):
+                    # KServe object with an 'is_ready' property
+                    is_ready = status_response.status.is_ready
+                    current_conditions = status_response.status.conditions if hasattr(status_response.status, 'conditions') else 'N/A'
+                    # Attempt to get URL from object if available
+                    if hasattr(status_response.status, 'address') and hasattr(status_response.status.address, 'url'):
+                        service_url = status_response.status.address.url
                 else:
-                    # Optional: Print more detailed status for debugging
-                    conditions = status.status.conditions if status.status and hasattr(status.status, 'conditions') else 'N/A'
-                    print(f"Still waiting for {model_name}. Current conditions: {conditions}")
+                    # Fallback for unexpected response format, log and continue polling
+                    print(f"Still waiting for {model_name}. Unexpected status response format. Response: {status_response}")
+
+                if is_ready:
+                    print(f"InferenceService {model_name} is ready.")
+                    if service_url:
+                        break # Exit loop if ready and URL is found
+                    else:
+                        print("InferenceService is ready but URL not found yet, retrying...")
+                        time.sleep(poll_interval_seconds)
+                else:
+                    print(f"Still waiting for {model_name}. Current status conditions: {current_conditions}")
                     time.sleep(poll_interval_seconds)
 
-            except k8s.client.ApiException as e:
-                # If InferenceService is not found yet (e.g., still being created by Kubernetes)
+            except k8s.ApiException as e: # Corrected: Use k8s.ApiException
                 if e.status == 404:
                     print(f"InferenceService {model_name} not found yet, retrying...")
                     time.sleep(poll_interval_seconds)
                 else:
+                    print(f"Kubernetes API error while waiting for InferenceService: {e}")
                     raise # Re-raise other API exceptions
             except Exception as e:
                 print(f"An unexpected error occurred while waiting for InferenceService: {e}")
                 raise
-        # --- End of manual polling ---
+
+        # Ensure service_url is fetched correctly after the loop
+        if not service_url:
+            # One final attempt to get the URL if it wasn't set in the loop
+            final_status_response = kserve_client.get(model_name, namespace=namespace)
+            if isinstance(final_status_response, dict) and 'status' in final_status_response and 'address' in final_status_response['status'] and 'url' in final_status_response['status']['address']:
+                service_url = final_status_response['status']['address']['url']
+            elif hasattr(final_status_response, 'status') and hasattr(final_status_response.status, 'address') and hasattr(final_status_response.status.address, 'url'):
+                service_url = final_status_response.status.address.url
+            else:
+                raise RuntimeError("Failed to retrieve InferenceService URL after it reported ready.")
 
 
-        # Now that the InferenceService is confirmed ready, get the URL
-        status = kserve_client.get(model_name, namespace=namespace)
-        service_url = status.status.address.url
         print(f"Model serving URL: {service_url}")
         return service_url
 
@@ -204,6 +239,7 @@ def deploy_model(
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         raise
+
 @dsl.component(
     base_image="python:3.9-slim",
     packages_to_install=["requests", "numpy"]
@@ -230,7 +266,7 @@ def test_prediction(
 
     try:
         response = requests.post(model_serving_url, headers=headers, json=payload)
-        response.raise_for_status()
+        response.raise_for_status() # Raise an exception for HTTP errors
 
         predictions = response.json().get('predictions')
 
@@ -280,7 +316,6 @@ def ml_model_lifecycle_pipeline(
         namespace=namespace
     )
 
-    # Access the single output of deploy_model_task using .output
     test_prediction_task = test_prediction(
         model_serving_url=deploy_model_task.output
     )
