@@ -2,32 +2,7 @@ import kfp
 from kfp import dsl
 from kfp.compiler import Compiler
 from kfp.client import Client
-import subprocess
-import os
 import time
-
-# --- START DIAGNOSTIC CODE ---
-print(f"--- KFP Runtime Check ---")
-print(f"KFP module loaded from: {kfp.__file__}")
-print(f"KFP version according to module: {kfp.__version__}")
-
-if hasattr(kfp, 'dsl'):
-    if hasattr(kfp.dsl, 'OutputPath'):
-        output_path_obj = kfp.dsl.OutputPath
-        print(f"kfp.dsl.OutputPath object: {output_path_obj}")
-        try:
-            dummy_type = output_path_obj(str)
-            print(f"kfp.dsl.OutputPath is callable with (str) for generic paths (as expected for v2).")
-        except TypeError as e:
-            print(f"kfp.dsl.OutputPath is NOT callable with (str) (TypeError: {e}). This means it's likely KFP v1.x behavior or an incompatible SDK version.")
-        except Exception as e:
-            print(f"Unexpected error when checking callability with (str): {e}")
-    else:
-        print(f"kfp.dsl.OutputPath not found within kfp.dsl.")
-else:
-    print(f"kfp.dsl module not found within kfp.")
-print(f"--- End KFP Runtime Check ---")
-# --- END DIAGNOSTIC CODE ---
 
 # --- Configuration ---
 MINIO_ENDPOINT = "minio-service.kubeflow:9000"
@@ -39,7 +14,7 @@ MODEL_SAVE_PATH_PREFIX = f"s3://{MINIO_BUCKET}/models"
 KUBEFLOW_PIPELINES_HOST = "http://10.254.50.50:8080/pipeline"
 KUBEFLOW_NAMESPACE = "kubeflow-user"
 
-OAUTH2_PROXY_COOKIE = "erhzAdbWmXFu9ARvdgbML-QYz6Pgzv0r7QkmsRX90hCrjyoS-5oWNvPFSgRkni_mEoVO25NTv6Yj3dccao-lWL18AnLjp65StqdVJQV9GzAKZd6TMaaKZT6d0QlGx7XK8yLpOwyFXFbQGLD5ZZltCE5jEy4LJjAqryTn4z1h4gdH95rpn53wqS0VxKXKqaL7oNtF6JwAMqCb8Bzcd8Ueb6pOEkWdKA9mFzSIYJAwLJVWtcSE7i_AnOmZcvs4W-vlrMtlbql-ehYZ0QSP4u2TsA4rtr07s0RnbF1qns8Ww3KawdSOJlDwOsJdcWc1qonwtIuafkeRUmqiuX8_PebTAwia_qE2EgKM1ipq9grdAiYzyByCsrpmWqVmmHWyC7xZdmwJn0giFxUzfEKo2Ih8suTmfYI_cU69Wf7nK80oGH_CCP4uvX3sCi5Z-hb0_ifMuSkArQ0zMzBmHkPDQOsoTiUWcrXR4CzVqUvjV_iL-6H5blieiw00yCSSfLhgWKODN9oPecVqGZVffUIAIOw1NPp3Fs560Xmoxl81fKTxGGHZXY4uuRIO5FSuApJAQmcPj_77sg6mk7Kdb_Cf0pQF_TlgkWN0BHUU_zdcNyN0UqXZ6ZBRLLlsWA63m9McrEZDs-6WslKKmsz99AsxIB2r6oEy1UphXh1cSYwlHwtGs2zpgpK17vgwiuAcCpFkU9JgAh_u0GeZrEXHJdFQEDF3RfvhLPdjxfXyzHzOvywuSCT6zTMI7lY7bDX5XN84avOEulBACUEBGnmnVE1hwsMDWIewjjdOPkSEc26x5h4UhYuSyAfPLJNSj8flh71OdSoUucfnmzfoNvRXmTxQL-WpIbICIhVbWshopdxFqxl19IPQ82ssD4wMgDeMPN7hND5vx4ZWwDzdCBGmB18-cAxazBtZpgWQ3ydqX8h1L_9rySeBOQB4sFOfPOGD6RvewyOeDCRF8iJpqFFpiCLnn_7VDtYGHCBT-zmxHvDZf7SPThyUdIFZrMz-bcwY_HF1WlVhfcKxARK-B7THCZhIEuTVszQHzetb_DsjTrWyTeFh-WwCz2dQE1nuZ4jOuNokef8lezPDG_WxTwLKD13I3MJUzuRNDdeSe5EteTWHPm-j0_9u3xXX4qVz1z1xV83V1bx-tc__ZFD7mRyMnxc5wxMKbBVZd9ntc2v0wpM0McQWQi4Z9hELSxE-IoWqGY7WzfRxRVVhNxHLD6FnGTf5K2XbLgOC-QLJn4GC0YAs5kkCYO1oNXKM__MCsHMfoDnGdzVph5K6900iZXxCOTH80M1CYlePvzGFUTexHXR48T5JV05S9jgvL7qqEIozAun0xfIjCvZxBncGkXsyzo53tTtO-OCr2H7aCb5m1D12MWGCfrxhgbaLEOwbH4cWHFoycbT45x6PDpTMhLxWRUIuY0fG8xaEP81t55LAchsvYemAoXOb9_mgJdvbw9CC9CY5vxLc6hA8FoN1dc8eNcKLk5IlQRz7RlMp8lpHQSWpPQf8wMUqD6U9FBT4Wx6hZVhtDXhthq2xq2YEmccaPpnrLWyaHlEckOnDCrlV37U_AUAsX9euVX9q4cXisFfEeP1aMI6wCdVBQGt1zezt5kUypNVokgrFv_BCepIImX8uJcbjyJfLpCU1MBYMWGmof3qI-TiPFUXbMKICbZOYnB7mnsBaQzWgCFnH9JDVJM-lT7VnshOQZsfkdJE0rjOSySnSFR1qAu5GkqOj3FOjN32_MyUS0Ye9wD4KKrRKQSdf5jLed0QV4UlS7wFjPYmU5WPL_43l1d_h0JMBcTNNiDLwWnQ2jLsGLaLvNY_qWGnd4IfDXe3iZo9fGtIK-iQvPmxVOy-02AgIcNM6qnAA7dihySIxcQEG13illWNzlliE9zC1uB3n8HwA69xJg3DG9CK3S8NBi7H9JML2gOYA4cvm1-wVl0MgeUweMZfA8O5H_vDZzjmjaZlKTvQiwmmDMtrYhi8IhOns-Hboh6w74ee3AhnD5WErwygf9x4hLmTGZOzyjtMHRMgzMwBq0r1EECiD8wxGEgCVHSjacLz2l6N0dhyG65ULQQySd8pHvIEZeIl6r5GcZ-ukKlAWHs8AYBVG8gfpg3RGc4rcGd2F51PHGbmCtuzUbjZrpnxGtooWGfjea3djzNvicIBJCqugIQbI1Q1q90QXpmGIxoHA8MRKzhUZ0NWqrB1mwvUMxcnqKwpnIi9z-b8QBZhFCHTMf5CqIJ8uFeRcruXWLQ==|1747879832|e-hd1kjuKFxGTJDQCKb-E0irXUMuztuk6opctEgePmU="
+OAUTH2_PROXY_COOKIE = "L2x3oXCE81tKY8WVYgnUzCkBcZrPc39kfxbM03YFGdG_7WwoIyCcEi7UIE7rG8s2vYJoISnfOZ6Vx_ETk98TrVvNOoEd1a_Zmi_8IZljE5GFnNiGOt_vlBiqDXc3-mMCd4sUIzIL7B9L9XD4RiqmdXDIg2HEY5tgS1RmwV4H3DsoFRCBK7wv_asdhcVdB0CmfKGKOlvVTNhCE09DHt1XPS2PGHH9zzytjG2oyZ5_PGRjJdsswbhh7NAXK_0ZjK4f82iJu152CnVpnjkdm-NjkAtoWgl4IJZVAMwZ0-GI39DGeh3rnfNpor6Fi7jKpAbZ7LyBEq3jvbrEHgGwAhVb0xJ7ONymzbNaiQCxhEZOT8r_4GEXzluuSyxIZ22BWJ0V9vT34jt5LJimAFfJN_eL6iKH8WTrn8OL7wxsZzq1kf3Ng9NpRQ9G9MX71ViexaC-T6HIrXhyhbesKYLblW_dG5DeF9dYCapiYXAzziVei2jNlPsrRpYDMgzgpWhJKSm0zmvOy9_xGdJ1bhQKERwbAw3yuYo4R4aWmGbViYzxW89fzsO2gVTCQ9ro1x1YDaXKUop23wWD56IyXKNkpnqcBz7EfytaRpAwNKO8xSrjV-pQCjsqlx3-Kap_vHZZ_blA6mhHzoPvA3mY-V4as9eAXXa152XioBlm4yUKykaN5rUKVEfv94ClbzYBdv4o_Clbo1E5odV-9atapfza6lQ9DVFPfC47OLRpohDLn1FJrkbRzpfXT-10Yg6_qgKYX0uZjO5HTwJ9TIgG-fVB1abP20KGubureCay5FnkTj15jOLHGT0nZXWyfC4niPsJJOb2k51Q8PAxIS07x23gN_jvl9m4UsOpv2O-LQQx97tYplZdXazD94upEVhAnFxgJBQVnA9cQWNcqI7gEul4fUe5Hio0xlatUnM0lOCdnyert0oSR6ocDZ-qBlnqNaT7bKwwF1bkrqhKwZRboZRWZ-ByRQ4F6j1OG8Ah74SJhqXfRtvRr4WEeQFkM4wlVZyh0uJ6rW39qRIer--cIap-coVSgNEkHeyBkeTNlNTETlhNwkqf9LA0LOyNMRCrnJFpGM-W7wtTM_fdkuCC1ko3LGXgA5--2s-s9l0UunYkVuHqvg9nvMoWyvhCMIti0oKcJTYwdpskRUOZwHlbUu7Y6fOgaEDwAU3T-xOovaGEJ-dWKEVZ4MAEp-RRZcGhsBltsulB91r1pVW6PbgZuy-GpNh_qdq-tnLjfOpoiZFLlaLnqcLRFPP5XY__-EUvMeLvW4Y9GNszouNho6eCnVapZdnvWFzkzoX2KjkG3wYv-2VPf6QbiSVVFbwWmL0DVraMv-l9yF9lAtwn7PNQflZMOklQx61SCUfq77brMMVqwmNxTWK2QMSMnuxErYI9aSc2NX43MtENyi4kxugcNlPffNXU6xdrN-SMtucPmcf84P65i2gsr_fBguTomebM-7SOnUgEQeZRw6UUtYALdrgKNuuHYBmdCeCi07uhB-KuElok0RaIbZTGCIbgufyCa3qaxrO7apS_IT7cDTCMXzkS_4BgfNZPDDkNUVGZz5UTSVTZNwgTwP7O9GpE7pF6HJMGrTz2hzrIRF1bkKUai00u42S8uPMa6r5zwM1t295M3E22IqL2xVTi3EEln4wHMQpikuh9V3siCDGgKhT2YnL7KZPfa-hsRqCUGzPDozXDNt8pZpYdXpIOCssNh650ROJ7O1XtB7zrn4P6eKuVQ3eUagL2njZRXneo-Fz1oboFfPBeLl12dYKnBZIpVuFwPcsp7nOJfGcwXgzm5hLkkdn2HJCL8pSGYtkYj-qoHs6RJISUidgtNwwJiOijIv17bUfWQlb0OgmQM8sFk-iAbyk6M9PuNH4w4898BoymmWY0ggJjyPBDgeYGZ3N54Lv2k_N80pt2dWBbfFspmBDITHyMozC0jHZvacJBAexkcfOclXXGEcuWBax5fVQh7Up58l8uyVUa0zbS7qtvAKp8VHHgMe0JrLmeMAweN7rfj1A3qnZnzdWCDCksncRp3m9vQuASPT0M-AXGhPQecZuH0vkdnRDqp-K9HDUFXbVsu9iPtPd1vI3akM_AqSL-pBCpQKOKpefjUatw569hAyODtwc-0QK7C5Z2kPyi3JmhDTOrUibuORzuKePfTDekI-W8Z_3Ad-LrulAMY08hF-kXr2LXosAif4dz72ONHPm7s-gDNjFMHJTt20O1qS_6Aot7xO4Viej3qXUbqIdoFA54Y4saaD-9eVxDqY_NI1z4|1748227448|epQvNv1_TcHhNfKy5pf0w8dM12hTAMaB59OFySfTldI="
 
 # --- Kubeflow Pipeline Components ---
 
@@ -47,7 +22,7 @@ OAUTH2_PROXY_COOKIE = "erhzAdbWmXFu9ARvdgbML-QYz6Pgzv0r7QkmsRX90hCrjyoS-5oWNvPFS
     base_image="python:3.9-slim",
     packages_to_install=["scikit-learn", "numpy", "pandas", "joblib"]
 )
-def prepare_data(data: dsl.OutputPath(dsl.Dataset)): # Changed to OutputPath(Dataset)
+def prepare_data(data: dsl.OutputPath(dsl.Dataset)):
     """
     Generates a simple synthetic dataset and saves it.
     """
@@ -61,7 +36,7 @@ def prepare_data(data: dsl.OutputPath(dsl.Dataset)): # Changed to OutputPath(Dat
     dataset_content = {'X': X, 'y': y}
 
     # Save the data to the provided output path (which is now a Dataset artifact)
-    joblib.dump(dataset_content, data) # 'data' is the path to the Dataset artifact
+    joblib.dump(dataset_content, data)
     print(f"Synthetic data prepared and saved to {data}")
 
 
@@ -70,7 +45,7 @@ def prepare_data(data: dsl.OutputPath(dsl.Dataset)): # Changed to OutputPath(Dat
     packages_to_install=["scikit-learn", "numpy", "pandas", "joblib", "minio"]
 )
 def train_and_save_model(
-    data: dsl.InputPath(dsl.Dataset), # Changed to InputPath(Dataset)
+    data: dsl.InputPath(dsl.Dataset),
     model_name: str,
     minio_endpoint: str,
     minio_access_key: str,
@@ -88,7 +63,7 @@ def train_and_save_model(
     import os
 
     # Load data from the provided InputPath (which is a Dataset artifact)
-    dataset_content = joblib.load(data) # 'data' is the path to the Dataset artifact
+    dataset_content = joblib.load(data)
     X = dataset_content['X']
     y = dataset_content['y']
 
@@ -133,150 +108,64 @@ def train_and_save_model(
         raise
 
 @dsl.component(
-    base_image="python:3.9-slim",
-    packages_to_install=["kubernetes==30.1.0"] # Ensure kubernetes version < 31 is installed in this image
+    packages_to_install=["kubernetes", "kserve"],
+    base_image="python:3.9",
 )
 def deploy_model(
-    model_storage_uri: str,
     model_name: str,
+    model_storage_uri: str,
     namespace: str,
-    inferenceservice_url_output: dsl.OutputPath(str)
-):
-    """
-    Deploys the trained model using KServe (InferenceService).
-    Waits for the deployment to be ready and prints the URL.
-    """
-    from kubernetes import client, config
+    kserve_group: str = "serving.kserve.io", # Add default values for kserve_group and kserve_version
+    kserve_version: str = "v1beta1",         # if they are always the same.
+) -> str: # Add return type hint for the URL
+    # Import necessary libraries inside the component function
+    from kubernetes import client as k8s
+    import json
     import time
+    from kserve import KServeClient
 
-    config.load_incluster_config()
-    custom_api = client.CustomObjectsApi()
+    # Initialize KServeClient
+    kserve_client = KServeClient()
 
-    # Define common KServe API group and version for clarity
-    kserve_group = "serving.kserve.io"
-    kserve_version = "v1beta1"
-    kserve_plural = "inferenceservices"
-
+    # Define the InferenceService manifest
     inferenceservice_manifest = {
         "apiVersion": f"{kserve_group}/{kserve_version}",
         "kind": "InferenceService",
         "metadata": {
             "name": model_name,
             "namespace": namespace,
+            "annotations": {
+                "serving.kserve.io/s3-secret": "minio-credentials"
+            }
         },
         "spec": {
             "predictor": {
                 "sklearn": {
                     "storageUri": model_storage_uri,
                 },
-                "env": [ # <--- This is the correct location for KServe's automated injection
-                    {
-                        "name": "AWS_ACCESS_KEY_ID",
-                        "valueFrom": {
-                            "secretKeyRef": {
-                                "name": "minio-credentials", # Name of your secret
-                                "key": "AWS_ACCESS_KEY_ID" # Key within the secret
-                            }
-                        }
-                    },
-                    {
-                        "name": "AWS_SECRET_ACCESS_KEY",
-                        "valueFrom": {
-                            "secretKeyRef": {
-                                "name": "minio-credentials",
-                                "key": "AWS_SECRET_ACCESS_KEY"
-                            }
-                        }
-                    },
-                    {"name": "S3_ENDPOINT", "value": "http://minio-service.kubeflow.svc.cluster.local:9000"},
-                    {"name": "S3_USE_HTTPS", "value": "false"}
-                ]
             }
         }
     }
 
-    print(f"Attempting to deploy KServe InferenceService '{model_name}' in namespace '{namespace}'...")
+    print(f"Creating InferenceService: {model_name} in namespace: {namespace}")
     try:
-        try:
-            # Check if InferenceService exists
-            custom_api.get_namespaced_custom_object(
-                group=kserve_group,
-                version=kserve_version,
-                name=model_name,
-                namespace=namespace,
-                plural=kserve_plural
-            )
-            print(f"InferenceService '{model_name}' already exists. Replacing...")
-            custom_api.replace_namespaced_custom_object(
-                group=kserve_group,
-                version=kserve_version,
-                name=model_name,
-                namespace=namespace,
-                plural=kserve_plural,
-                body=inferenceservice_manifest
-            )
-        except client.ApiException as e:
-            if e.status == 404:
-                print(f"InferenceService '{model_name}' not found. Creating new one...")
-                custom_api.create_namespaced_custom_object(
-                    group=kserve_group,
-                    version=kserve_version,
-                    namespace=namespace,
-                    plural=kserve_plural,
-                    body=inferenceservice_manifest
-                )
-            else:
-                raise
+        kserve_client.create(inferenceservice_manifest, namespace=namespace)
+        print(f"InferenceService {model_name} created/updated successfully.")
+        print(f"Waiting for InferenceService {model_name} to be ready...")
+        kserve_client.wait_is_ready(model_name, namespace=namespace)
+        print(f"InferenceService {model_name} is ready.")
 
-        print(f"InferenceService '{model_name}' deployment initiated. Waiting for it to become ready...")
+        # Fetch the status to get the URL
+        status = kserve_client.get(model_name, namespace=namespace)
+        service_url = status.status.address.url
+        print(f"Model serving URL: {service_url}")
+        return service_url # This will be the output of the component
 
-        max_retries = 30
-        retry_delay_seconds = 10
-        inferenceservice_url = ""
-
-        for i in range(max_retries):
-            time.sleep(retry_delay_seconds)
-            try:
-                isvc_status = custom_api.get_namespaced_custom_object(
-                    group=kserve_group,
-                    version=kserve_version,
-                    name=model_name,
-                    namespace=namespace,
-                    plural=kserve_plural
-                )
-
-                conditions = isvc_status.get("status", {}).get("conditions", [])
-                ready_condition = next((c for c in conditions if c.get("type") == "Ready"), None)
-
-                if ready_condition and ready_condition.get("status") == "True":
-                    inferenceservice_url = isvc_status.get("status", {}).get("address", {}).get("url")
-                    if inferenceservice_url:
-                        print(f"InferenceService '{model_name}' is Ready!")
-                        print(f"Model Serving URL: {inferenceservice_url}")
-
-                        with open(inferenceservice_url_output, "w") as f:
-                            f.write(inferenceservice_url)
-                        return
-                    else:
-                        print(f"InferenceService '{model_name}' is Ready, but URL is not yet available. Retrying...")
-                else:
-                    message = ready_condition.get("message", "No specific message.") if ready_condition else "Ready condition not found or not True."
-                    print(f"InferenceService '{model_name}' not ready yet (Attempt {i+1}/{max_retries}). Status: {ready_condition.get('status', 'Unknown')}, Message: {message}")
-
-            except client.ApiException as e:
-                print(f"Kubernetes API error getting InferenceService status: {e.status} - {e.reason}. Retrying...")
-            except Exception as e:
-                print(f"Unexpected error during KServe status check: {e}. Retrying...")
-
-        print(f"Error: InferenceService '{model_name}' did not become ready within the expected time.")
-        raise RuntimeError("KServe InferenceService deployment failed.")
-
-    except client.ApiException as e:
-        print(f"Kubernetes API Error: {e.status} - {e.reason}")
-        print(f"Error details: {e.body}")
+    except k8s.ApiException as e:
+        print(f"Error creating/updating InferenceService: {e}")
         raise
     except Exception as e:
-        print(f"An unexpected error occurred during KServe deployment: {e}")
+        print(f"An unexpected error occurred: {e}")
         raise
 
 @dsl.component(
@@ -340,7 +229,7 @@ def ml_model_lifecycle_pipeline(
     prepare_data_task = prepare_data()
 
     train_and_save_model_task = train_and_save_model(
-        data=prepare_data_task.outputs['data'], # Changed from data_path to data
+        data=prepare_data_task.outputs['data'],
         model_name=model_name,
         minio_endpoint=MINIO_ENDPOINT,
         minio_access_key=MINIO_ACCESS_KEY,
@@ -355,8 +244,9 @@ def ml_model_lifecycle_pipeline(
         namespace=namespace
     )
 
+    # Access the single output of deploy_model_task using .output
     test_prediction_task = test_prediction(
-        model_serving_url=deploy_model_task.outputs['inferenceservice_url_output']
+        model_serving_url=deploy_model_task.output
     )
     test_prediction_task.after(deploy_model_task)
 
