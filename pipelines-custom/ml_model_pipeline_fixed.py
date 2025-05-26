@@ -107,6 +107,7 @@ def train_and_save_model(
         print(f"An unexpected error occurred during model saving: {e}")
         raise
 
+
 @dsl.component(
     packages_to_install=["kubernetes", "kserve"],
     base_image="python:3.9",
@@ -115,51 +116,87 @@ def deploy_model(
     model_name: str,
     model_storage_uri: str,
     namespace: str,
-    kserve_group: str = "serving.kserve.io", # Add default values for kserve_group and kserve_version
-    kserve_version: str = "v1beta1",         # if they are always the same.
-) -> str: # Add return type hint for the URL
+    kserve_group: str = "serving.kserve.io",
+    kserve_version: str = "v1beta1",
+) -> str:
     # Import necessary libraries inside the component function
     from kubernetes import client as k8s
     import json
     import time
     from kserve import KServeClient
+    from kserve import V1beta1InferenceService, V1beta1InferenceServiceSpec, V1beta1PredictorSpec, V1beta1SKLearnSpec
 
     # Initialize KServeClient
     kserve_client = KServeClient()
 
-    # Define the InferenceService manifest
-    inferenceservice_manifest = {
-        "apiVersion": f"{kserve_group}/{kserve_version}",
-        "kind": "InferenceService",
-        "metadata": {
-            "name": model_name,
-            "namespace": namespace,
-            "annotations": {
+    # Define the InferenceService object
+    predictor_spec = V1beta1PredictorSpec(
+        sklearn=V1beta1SKLearnSpec(
+            storage_uri=model_storage_uri
+        )
+    )
+
+    inferenceservice_spec = V1beta1InferenceServiceSpec(
+        predictor=predictor_spec
+    )
+
+    inferenceservice_object = V1beta1InferenceService(
+        api_version=f"{kserve_group}/{kserve_version}",
+        kind="InferenceService",
+        metadata=k8s.V1ObjectMeta(
+            name=model_name,
+            namespace=namespace,
+            annotations={
                 "serving.kserve.io/s3-secret": "minio-credentials"
             }
-        },
-        "spec": {
-            "predictor": {
-                "sklearn": {
-                    "storageUri": model_storage_uri,
-                },
-            }
-        }
-    }
+        ),
+        spec=inferenceservice_spec
+    )
 
     print(f"Creating InferenceService: {model_name} in namespace: {namespace}")
     try:
-        kserve_client.create(inferenceservice_manifest, namespace=namespace)
+        kserve_client.create(inferenceservice_object, namespace=namespace)
         print(f"InferenceService {model_name} created/updated successfully.")
         print(f"Waiting for InferenceService {model_name} to be ready...")
-        kserve_client.wait_is_ready(model_name, namespace=namespace)
-        print(f"InferenceService {model_name} is ready.")
 
-        # Fetch the status to get the URL
+        # --- Manual polling for InferenceService readiness ---
+        timeout_seconds = 600 # 10 minutes timeout
+        poll_interval_seconds = 10 # Check every 10 seconds
+        start_time = time.time()
+
+        while True:
+            if (time.time() - start_time) > timeout_seconds:
+                raise TimeoutError(f"InferenceService {model_name} did not become ready within {timeout_seconds} seconds.")
+
+            try:
+                status = kserve_client.get(model_name, namespace=namespace)
+                if status and status.status and hasattr(status.status, 'is_ready') and status.status.is_ready:
+                    print(f"InferenceService {model_name} is ready.")
+                    break # Exit loop if ready
+                else:
+                    # Optional: Print more detailed status for debugging
+                    conditions = status.status.conditions if status.status and hasattr(status.status, 'conditions') else 'N/A'
+                    print(f"Still waiting for {model_name}. Current conditions: {conditions}")
+                    time.sleep(poll_interval_seconds)
+
+            except k8s.client.ApiException as e:
+                # If InferenceService is not found yet (e.g., still being created by Kubernetes)
+                if e.status == 404:
+                    print(f"InferenceService {model_name} not found yet, retrying...")
+                    time.sleep(poll_interval_seconds)
+                else:
+                    raise # Re-raise other API exceptions
+            except Exception as e:
+                print(f"An unexpected error occurred while waiting for InferenceService: {e}")
+                raise
+        # --- End of manual polling ---
+
+
+        # Now that the InferenceService is confirmed ready, get the URL
         status = kserve_client.get(model_name, namespace=namespace)
         service_url = status.status.address.url
         print(f"Model serving URL: {service_url}")
-        return service_url # This will be the output of the component
+        return service_url
 
     except k8s.ApiException as e:
         print(f"Error creating/updating InferenceService: {e}")
@@ -167,7 +204,6 @@ def deploy_model(
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         raise
-
 @dsl.component(
     base_image="python:3.9-slim",
     packages_to_install=["requests", "numpy"]
