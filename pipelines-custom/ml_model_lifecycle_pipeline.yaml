@@ -2,6 +2,7 @@
 # Name: ml-model-lifecycle-pipeline
 # Description: A pipeline to prepare data, train, save, deploy, and test a simple ML model.
 # Inputs:
+#    minio_endpoint: str [Default: 'http://minio-service.kubeflow:9000']
 #    model_name: str [Default: 'my-sklearn-regression-model']
 #    namespace: str [Default: 'kubeflow-user']
 components:
@@ -9,6 +10,20 @@ components:
     executorLabel: exec-deploy-model
     inputDefinitions:
       parameters:
+        kserve_group:
+          defaultValue: serving.kserve.io
+          isOptional: true
+          parameterType: STRING
+        kserve_version:
+          defaultValue: v1beta1
+          isOptional: true
+          parameterType: STRING
+        minio_endpoint:
+          parameterType: STRING
+        minio_secret_name:
+          defaultValue: minio-credentials
+          isOptional: true
+          parameterType: STRING
         model_name:
           parameterType: STRING
         model_storage_uri:
@@ -17,7 +32,7 @@ components:
           parameterType: STRING
     outputDefinitions:
       parameters:
-        inferenceservice_url_output:
+        Output:
           parameterType: STRING
   comp-prepare-data:
     executorLabel: exec-prepare-data
@@ -62,7 +77,7 @@ components:
       parameters:
         Output:
           parameterType: STRING
-defaultPipelineRoot: minio://mlpipeline/artifacts
+defaultPipelineRoot: s3://mlpipeline/artifacts
 deploymentSpec:
   executors:
     exec-deploy-model:
@@ -79,8 +94,8 @@ deploymentSpec:
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
-          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
-          \ && \"$0\" \"$@\"\n"
+          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes==29.0.0'\
+          \ 'PyYAML==6.0.1' && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -92,69 +107,124 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef deploy_model(\n    model_storage_uri: str,\n    model_name: str,\n\
-          \    namespace: str,\n    inferenceservice_url_output: dsl.OutputPath(str)\n\
-          ):\n    \"\"\"\n    Deploys the trained model using KServe (InferenceService).\n\
-          \    Waits for the deployment to be ready and prints the URL.\n    \"\"\"\
-          \n    from kubernetes import client, config\n    import time\n\n    config.load_incluster_config()\n\
-          \    custom_api = client.CustomObjectsApi()\n\n    inferenceservice_manifest\
-          \ = {\n        \"apiVersion\": \"serving.kserve.io/v1beta1\",\n        \"\
-          kind\": \"InferenceService\",\n        \"metadata\": {\n            \"name\"\
-          : model_name,\n            \"namespace\": namespace,\n        },\n     \
-          \   \"spec\": {\n            \"predictor\": {\n                \"sklearn\"\
-          : {\n                    \"storageUri\": model_storage_uri\n           \
-          \     }\n            }\n        }\n    }\n\n    print(f\"Attempting to deploy\
-          \ KServe InferenceService '{model_name}' in namespace '{namespace}'...\"\
-          )\n    try:\n        try:\n            custom_api.get_namespaced_custom_object(\n\
-          \                group=\"serving.kserve.io\",\n                version=\"\
-          v1beta1\",\n                name=model_name,\n                namespace=namespace\n\
-          \            )\n            print(f\"InferenceService '{model_name}' already\
-          \ exists. Replacing...\")\n            custom_api.replace_namespaced_custom_object(\n\
-          \                group=\"serving.kserve.io\",\n                version=\"\
-          v1beta1\",\n                name=model_name,\n                namespace=namespace,\n\
-          \                body=inferenceservice_manifest\n            )\n       \
-          \ except client.ApiException as e:\n            if e.status == 404:\n  \
-          \              print(f\"InferenceService '{model_name}' not found. Creating\
-          \ new one...\")\n                custom_api.create_namespaced_custom_object(\n\
-          \                    group=\"serving.kserve.io\",\n                    version=\"\
-          v1beta1\",\n                    namespace=namespace,\n                 \
-          \   body=inferenceservice_manifest\n                )\n            else:\n\
-          \                raise\n\n        print(f\"InferenceService '{model_name}'\
-          \ deployment initiated. Waiting for it to become ready...\")\n\n       \
-          \ max_retries = 30\n        retry_delay_seconds = 10\n        inferenceservice_url\
-          \ = \"\"\n\n        for i in range(max_retries):\n            time.sleep(retry_delay_seconds)\n\
-          \            try:\n                isvc_status = custom_api.get_namespaced_custom_object(\n\
-          \                    group=\"serving.kserve.io\",\n                    version=\"\
-          v1beta1\",\n                    name=model_name,\n                    namespace=namespace\n\
-          \                )\n\n                conditions = isvc_status.get(\"status\"\
-          , {}).get(\"conditions\", [])\n                ready_condition = next((c\
-          \ for c in conditions if c.get(\"type\") == \"Ready\"), None)\n\n      \
-          \          if ready_condition and ready_condition.get(\"status\") == \"\
-          True\":\n                    inferenceservice_url = isvc_status.get(\"status\"\
-          , {}).get(\"address\", {}).get(\"url\")\n                    if inferenceservice_url:\n\
-          \                        print(f\"InferenceService '{model_name}' is Ready!\"\
-          )\n                        print(f\"Model Serving URL: {inferenceservice_url}\"\
-          )\n\n                        with open(inferenceservice_url_output, \"w\"\
-          ) as f:\n                            f.write(inferenceservice_url)\n   \
-          \                     return\n                    else:\n              \
-          \          print(f\"InferenceService '{model_name}' is Ready, but URL is\
-          \ not yet available. Retrying...\")\n                else:\n           \
-          \         message = ready_condition.get(\"message\", \"No specific message.\"\
-          ) if ready_condition else \"Ready condition not found or not True.\"\n \
-          \                   print(f\"InferenceService '{model_name}' not ready yet\
-          \ (Attempt {i+1}/{max_retries}). Status: {ready_condition.get('status',\
-          \ 'Unknown')}, Message: {message}\")\n\n            except client.ApiException\
-          \ as e:\n                print(f\"Kubernetes API error getting InferenceService\
-          \ status: {e.status} - {e.reason}. Retrying...\")\n            except Exception\
-          \ as e:\n                print(f\"Unexpected error during KServe status\
-          \ check: {e}. Retrying...\")\n\n        print(f\"Error: InferenceService\
-          \ '{model_name}' did not become ready within the expected time.\")\n   \
-          \     raise RuntimeError(\"KServe InferenceService deployment failed.\"\
-          )\n\n    except client.ApiException as e:\n        print(f\"Kubernetes API\
-          \ Error: {e.status} - {e.reason}\")\n        print(f\"Error details: {e.body}\"\
-          )\n        raise\n    except Exception as e:\n        print(f\"An unexpected\
-          \ error occurred during KServe deployment: {e}\")\n        raise\n\n"
-        image: python:3.9-slim
+          \ *\n\ndef deploy_model(\n    model_name: str,\n    model_storage_uri: str,\n\
+          \    namespace: str,\n    minio_endpoint: str,\n    kserve_group: str =\
+          \ \"serving.kserve.io\",\n    kserve_version: str = \"v1beta1\",\n    minio_secret_name:\
+          \ str = \"minio-credentials\"\n) -> str:\n    \"\"\"\n    Enhanced deploy_model\
+          \ with better debugging and error handling.\n    \"\"\"\n    from kubernetes\
+          \ import client, config\n    import json\n    import time\n\n    try:\n\
+          \        # Load Kubernetes config\n        try:\n            config.load_incluster_config()\n\
+          \            print(\"\u2713 Loaded in-cluster Kubernetes config\")\n   \
+          \     except config.config_exception.ConfigException:\n            config.load_kube_config()\n\
+          \            print(\"\u2713 Loaded local Kubernetes config\")\n\n      \
+          \  api_client = client.ApiClient()\n        custom_api = client.CustomObjectsApi(api_client)\n\
+          \        v1 = client.CoreV1Api(api_client)\n\n        # Verify secret exists\
+          \ and has correct keys\n        try:\n            secret = v1.read_namespaced_secret(name=minio_secret_name,\
+          \ namespace=namespace)\n            secret_keys = list(secret.data.keys())\n\
+          \            print(f\"\u2713 Found secret '{minio_secret_name}' with keys:\
+          \ {secret_keys}\")\n\n            required_keys = ['AWS_ACCESS_KEY_ID',\
+          \ 'AWS_SECRET_ACCESS_KEY']\n            missing_keys = [key for key in required_keys\
+          \ if key not in secret_keys]\n            if missing_keys:\n           \
+          \     raise ValueError(f\"Secret missing required keys: {missing_keys}\"\
+          )\n\n        except client.exceptions.ApiException as e:\n            print(f\"\
+          \u2717 Error accessing secret '{minio_secret_name}': {e}\")\n          \
+          \  raise\n\n        # Enhanced InferenceService manifest\n        inferenceservice_manifest\
+          \ = {\n            \"apiVersion\": f\"{kserve_group}/{kserve_version}\"\
+          ,\n            \"kind\": \"InferenceService\",\n            \"metadata\"\
+          : {\n                \"name\": model_name,\n                \"namespace\"\
+          : namespace,\n                \"annotations\": {\n                    \"\
+          serving.kserve.io/s3-endpoint\": minio_endpoint,\n                    \"\
+          serving.kserve.io/s3-usehttps\": \"false\",\n                    \"serving.kserve.io/s3-region\"\
+          : \"us-east-1\"\n                }\n            },\n            \"spec\"\
+          : {\n                \"predictor\": {\n                    \"serviceAccountName\"\
+          : \"default\",\n                    \"sklearn\": {\n                   \
+          \     \"storageUri\": model_storage_uri,\n                        \"resources\"\
+          : {\n                            \"requests\": {\"cpu\": \"100m\", \"memory\"\
+          : \"512Mi\"},\n                            \"limits\": {\"cpu\": \"1\",\
+          \ \"memory\": \"1Gi\"}\n                        },\n                   \
+          \     \"env\": [\n                            {\n                      \
+          \          \"name\": \"AWS_ACCESS_KEY_ID\",\n                          \
+          \      \"valueFrom\": {\n                                    \"secretKeyRef\"\
+          : {\n                                        \"name\": minio_secret_name,\n\
+          \                                        \"key\": \"AWS_ACCESS_KEY_ID\"\n\
+          \                                    }\n                               \
+          \ }\n                            },\n                            {\n   \
+          \                             \"name\": \"AWS_SECRET_ACCESS_KEY\",\n   \
+          \                             \"valueFrom\": {\n                       \
+          \             \"secretKeyRef\": {\n                                    \
+          \    \"name\": minio_secret_name,\n                                    \
+          \    \"key\": \"AWS_SECRET_ACCESS_KEY\"\n                              \
+          \      }\n                                }\n                          \
+          \  },\n                            {\n                                \"\
+          name\": \"AWS_ENDPOINT_URL\",\n                                \"value\"\
+          : minio_endpoint\n                            },\n                     \
+          \       {\n                                \"name\": \"AWS_REGION\",\n \
+          \                               \"value\": \"us-east-1\"\n             \
+          \               }\n                        ]\n                    }\n  \
+          \              }\n            }\n        }\n\n        print(f\"\U0001F4E6\
+          \ Creating InferenceService: {model_name}\")\n        print(f\"\U0001F4CD\
+          \ Storage URI: {model_storage_uri}\")\n        print(f\"\U0001F527 Manifest\
+          \ preview:\")\n        print(json.dumps(inferenceservice_manifest, indent=2))\n\
+          \n        # Delete existing InferenceService if it exists\n        try:\n\
+          \            existing = custom_api.get_namespaced_custom_object(\n     \
+          \           group=kserve_group,\n                version=kserve_version,\n\
+          \                namespace=namespace,\n                plural=\"inferenceservices\"\
+          ,\n                name=model_name\n            )\n\n            print(f\"\
+          \U0001F5D1\uFE0F Deleting existing InferenceService: {model_name}\")\n \
+          \           custom_api.delete_namespaced_custom_object(\n              \
+          \  group=kserve_group,\n                version=kserve_version,\n      \
+          \          namespace=namespace,\n                plural=\"inferenceservices\"\
+          ,\n                name=model_name\n            )\n            print(\"\u23F3\
+          \ Waiting 15 seconds for cleanup...\")\n            time.sleep(15)\n\n \
+          \       except client.exceptions.ApiException as e:\n            if e.status\
+          \ == 404:\n                print(f\"\u2139\uFE0F No existing InferenceService\
+          \ found (this is fine)\")\n            else:\n                print(f\"\u26A0\
+          \uFE0F Error checking for existing InferenceService: {e}\")\n\n        #\
+          \ Create new InferenceService\n        try:\n            response = custom_api.create_namespaced_custom_object(\n\
+          \                group=kserve_group,\n                version=kserve_version,\n\
+          \                namespace=namespace,\n                plural=\"inferenceservices\"\
+          ,\n                body=inferenceservice_manifest\n            )\n     \
+          \       print(f\"\u2705 InferenceService '{model_name}' created successfully\"\
+          )\n\n        except client.exceptions.ApiException as e:\n            print(f\"\
+          \u274C Failed to create InferenceService: {e}\")\n            print(f\"\U0001F4DD\
+          \ Error details: {e.body}\")\n            raise\n\n        # Enhanced status\
+          \ monitoring\n        print(f\"\u23F3 Monitoring InferenceService status...\"\
+          )\n        timeout_seconds = 600\n        poll_interval = 20\n        start_time\
+          \ = time.time()\n\n        while (time.time() - start_time) < timeout_seconds:\n\
+          \            try:\n                status_response = custom_api.get_namespaced_custom_object(\n\
+          \                    group=kserve_group,\n                    version=kserve_version,\n\
+          \                    namespace=namespace,\n                    plural=\"\
+          inferenceservices\",\n                    name=model_name\n            \
+          \    )\n\n                if 'status' in status_response:\n            \
+          \        status = status_response['status']\n\n                    # Print\
+          \ detailed status\n                    if 'conditions' in status:\n    \
+          \                    print(f\"\U0001F4CA Status conditions:\")\n       \
+          \                 for condition in status['conditions']:\n             \
+          \               ctype = condition.get('type', 'Unknown')\n             \
+          \               cstatus = condition.get('status', 'Unknown')\n         \
+          \                   message = condition.get('message', 'No message')\n \
+          \                           reason = condition.get('reason', 'No reason')\n\
+          \                            print(f\"  - {ctype}: {cstatus} ({reason})\
+          \ - {message}\")\n\n                            if ctype == 'Ready' and\
+          \ cstatus == 'True':\n                                print(f\"\U0001F389\
+          \ InferenceService '{model_name}' is ready!\")\n                       \
+          \         service_url = f\"http://{model_name}-predictor-default.{namespace}.svc.cluster.local/v1/models/{model_name}:predict\"\
+          \n                                return service_url\n\n               \
+          \     # Print address if available\n                    if 'address' in\
+          \ status:\n                        print(f\"\U0001F310 Address: {status['address']}\"\
+          )\n\n                    print(f\"\u23F3 Still waiting... ({int(time.time()\
+          \ - start_time)}s elapsed)\")\n\n                else:\n               \
+          \     print(\"\U0001F4CB No status available yet...\")\n\n             \
+          \   time.sleep(poll_interval)\n\n            except Exception as e:\n  \
+          \              print(f\"\u26A0\uFE0F Error checking status: {e}\")\n   \
+          \             time.sleep(poll_interval)\n\n        print(f\"\u23F0 Timeout\
+          \ reached after {timeout_seconds} seconds\")\n        # Return constructed\
+          \ URL for testing\n        service_url = f\"http://{model_name}-predictor-default.{namespace}.svc.cluster.local/v1/models/{model_name}:predict\"\
+          \n        print(f\"\U0001F517 Using constructed service URL: {service_url}\"\
+          )\n        return service_url\n\n    except Exception as e:\n        print(f\"\
+          \U0001F4A5 Deployment failed with error: {e}\")\n        import traceback\n\
+          \        traceback.print_exc()\n        raise\n\n"
+        image: python:3.10-slim-buster
     exec-prepare-data:
       container:
         args:
@@ -182,16 +252,12 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef prepare_data(data: dsl.OutputPath(dsl.Dataset)): # Changed to\
-          \ OutputPath(Dataset)\n    \"\"\"\n    Generates a simple synthetic dataset\
-          \ and saves it.\n    \"\"\"\n    from sklearn.datasets import make_regression\n\
-          \    import pandas as pd\n    import numpy as np\n    import joblib\n  \
-          \  import os\n\n    X, y = make_regression(n_samples=100, n_features=1,\
-          \ noise=20, random_state=42)\n    dataset_content = {'X': X, 'y': y}\n\n\
-          \    # Save the data to the provided output path (which is now a Dataset\
-          \ artifact)\n    joblib.dump(dataset_content, data) # 'data' is the path\
-          \ to the Dataset artifact\n    print(f\"Synthetic data prepared and saved\
-          \ to {data}\")\n\n"
+          \ *\n\ndef prepare_data(data: dsl.OutputPath(dsl.Dataset)):\n    \"\"\"\n\
+          \    Generates a simple synthetic dataset and saves it.\n    \"\"\"\n  \
+          \  import joblib\n    from sklearn.datasets import make_regression\n   \
+          \ import os\n\n    X, y = make_regression(n_samples=100, n_features=1, noise=20,\
+          \ random_state=42)\n    dataset_content = {'X': X, 'y': y}\n\n    joblib.dump(dataset_content,\
+          \ data)\n    print(f\"Synthetic data prepared and saved to {data}\")\n\n"
         image: python:3.9-slim
     exec-test-prediction:
       container:
@@ -223,18 +289,41 @@ deploymentSpec:
           \ *\n\ndef test_prediction(\n    model_serving_url: str,\n    prediction_result_path:\
           \ dsl.OutputPath(str)\n):\n    \"\"\"\n    Tests the deployed model by sending\
           \ a sample prediction request.\n    \"\"\"\n    import requests\n    import\
-          \ numpy as np\n    import json\n\n    print(f\"Testing model at URL: {model_serving_url}\"\
-          )\n\n    sample_input = [[5.0]]\n\n    headers = {'Content-Type': 'application/json'}\n\
-          \    payload = {\n        \"instances\": sample_input\n    }\n\n    try:\n\
-          \        response = requests.post(model_serving_url, headers=headers, json=payload)\n\
-          \        response.raise_for_status()\n\n        predictions = response.json().get('predictions')\n\
-          \n        print(f\"Prediction successful!\")\n        print(f\"Input: {sample_input}\"\
-          )\n        print(f\"Predictions: {predictions}\")\n\n        with open(prediction_result_path,\
-          \ \"w\") as f:\n            f.write(json.dumps(predictions))\n\n    except\
-          \ requests.exceptions.RequestException as e:\n        print(f\"Error during\
-          \ prediction request to {model_serving_url}: {e}\")\n        raise\n   \
-          \ except Exception as e:\n        print(f\"An unexpected error occurred\
-          \ during prediction testing: {e}\")\n        raise\n\n"
+          \ numpy as np\n    import json\n    import time\n\n    print(f\"Testing\
+          \ model at URL: {model_serving_url}\")\n\n    # Sample input data for a\
+          \ single-feature regression model\n    sample_input = [[5.0]]\n    headers\
+          \ = {'Content-Type': 'application/json'}\n    payload = {\n        \"instances\"\
+          : sample_input\n    }\n\n    # Retry mechanism for prediction testing\n\
+          \    max_retries = 10 # Increased retries\n    retry_delay = 15 # Reduced\
+          \ delay slightly\n\n    for attempt in range(max_retries):\n        try:\n\
+          \            print(f\"Prediction attempt {attempt + 1}/{max_retries} to\
+          \ {model_serving_url}\")\n            response = requests.post(model_serving_url,\
+          \ headers=headers, json=payload, timeout=30)\n            response.raise_for_status()\
+          \  # Raise an exception for HTTP errors\n\n            predictions = response.json().get('predictions')\n\
+          \n            if predictions is None:\n                raise ValueError(\"\
+          No 'predictions' key found in the response JSON.\")\n\n            print(f\"\
+          Prediction successful!\")\n            print(f\"Input: {sample_input}\"\
+          )\n            print(f\"Predictions: {predictions}\")\n\n            with\
+          \ open(prediction_result_path, \"w\") as f:\n                f.write(json.dumps({\n\
+          \                    \"input\": sample_input,\n                    \"predictions\"\
+          : predictions,\n                    \"status\": \"success\"\n          \
+          \      }))\n\n            return  # Success, exit the function\n\n     \
+          \   except (requests.exceptions.RequestException, ValueError) as e:\n  \
+          \          print(f\"Error during prediction request (attempt {attempt +\
+          \ 1}): {e}\")\n            if attempt < max_retries - 1:\n             \
+          \   print(f\"Retrying in {retry_delay} seconds...\")\n                time.sleep(retry_delay)\n\
+          \            else:\n                print(\"All prediction attempts failed.\"\
+          )\n                # Write failure result\n                with open(prediction_result_path,\
+          \ \"w\") as f:\n                    f.write(json.dumps({\n             \
+          \           \"input\": sample_input,\n                        \"predictions\"\
+          : None,\n                        \"status\": \"failed\",\n             \
+          \           \"error\": str(e)\n                    }))\n               \
+          \ raise\n        except Exception as e:\n            print(f\"An unexpected\
+          \ error occurred during prediction testing: {e}\")\n            with open(prediction_result_path,\
+          \ \"w\") as f:\n                f.write(json.dumps({\n                 \
+          \   \"input\": sample_input,\n                    \"predictions\": None,\n\
+          \                    \"status\": \"failed\",\n                    \"error\"\
+          : str(e)\n                }))\n            raise\n\n"
         image: python:3.9-slim
     exec-train-and-save-model:
       container:
@@ -263,35 +352,41 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef train_and_save_model(\n    data: dsl.InputPath(dsl.Dataset),\
-          \ # Changed to InputPath(Dataset)\n    model_name: str,\n    minio_endpoint:\
-          \ str,\n    minio_access_key: str,\n    minio_secret_key: str,\n    minio_bucket:\
-          \ str,\n    model_save_path_prefix: str,\n) -> str:\n    \"\"\"\n    Trains\
-          \ a simple Scikit-learn Linear Regression model and saves it to MinIO.\n\
-          \    \"\"\"\n    import joblib\n    from sklearn.linear_model import LinearRegression\n\
-          \    from minio import Minio\n    from minio.error import S3Error\n    import\
-          \ os\n\n    # Load data from the provided InputPath (which is a Dataset\
-          \ artifact)\n    dataset_content = joblib.load(data) # 'data' is the path\
-          \ to the Dataset artifact\n    X = dataset_content['X']\n    y = dataset_content['y']\n\
-          \n    # Train model\n    model = LinearRegression()\n    model.fit(X, y)\n\
-          \    print(\"Model training complete.\")\n\n    # Save model locally first\
-          \ (necessary before uploading)\n    local_model_filename = \"model.joblib\"\
-          \n    local_model_path = os.path.join(\"/tmp\", local_model_filename)\n\
-          \    joblib.dump(model, local_model_path)\n    print(f\"Model saved locally\
-          \ to {local_model_path}\")\n\n    # Upload model to MinIO\n    try:\n  \
-          \      client = Minio(\n            minio_endpoint,\n            access_key=minio_access_key,\n\
-          \            secret_key=minio_secret_key,\n            secure=False\n  \
-          \      )\n\n        object_name = f\"{model_name}/{local_model_filename}\"\
-          \n\n        if not client.bucket_exists(minio_bucket):\n            client.make_bucket(minio_bucket)\n\
-          \            print(f\"Bucket '{minio_bucket}' created.\")\n\n        client.fput_object(minio_bucket,\
+          \ *\n\ndef train_and_save_model(\n    data: dsl.InputPath(dsl.Dataset),\n\
+          \    model_name: str,\n    minio_endpoint: str, # Full URL, e.g., http://minio-service.kubeflow:9000\n\
+          \    minio_access_key: str,\n    minio_secret_key: str,\n    minio_bucket:\
+          \ str,\n    model_save_path_prefix: str, # Not directly used for KServe\
+          \ URI, but good for clarity\n) -> str:\n    \"\"\"\n    Trains a simple\
+          \ Scikit-learn Linear Regression model and saves it to MinIO.\n    Returns\
+          \ the s3:// URI for KServe deployment.\n    \"\"\"\n    import joblib\n\
+          \    from sklearn.linear_model import LinearRegression\n    from minio import\
+          \ Minio\n    from minio.error import S3Error\n    import os\n\n    dataset_content\
+          \ = joblib.load(data)\n    X = dataset_content['X']\n    y = dataset_content['y']\n\
+          \n    model = LinearRegression()\n    model.fit(X, y)\n    print(\"Model\
+          \ training complete.\")\n\n    local_model_filename = \"model.joblib\"\n\
+          \    local_model_path = os.path.join(\"/tmp\", local_model_filename)\n \
+          \   joblib.dump(model, local_model_path)\n    print(f\"Model saved locally\
+          \ to {local_model_path}\")\n\n    try:\n        # MinIO client needs the\
+          \ endpoint without http/https prefix for its constructor\n        minio_client_endpoint\
+          \ = minio_endpoint.replace(\"http://\", \"\").replace(\"https://\", \"\"\
+          )\n        client = Minio(\n            minio_client_endpoint,\n       \
+          \     access_key=minio_access_key,\n            secret_key=minio_secret_key,\n\
+          \            secure=False # Set to True if your MinIO uses HTTPS\n     \
+          \   )\n\n        object_name = f\"{model_name}/model.joblib\" # KServe expects\
+          \ model artifact directly under this path.\n                           \
+          \                       # You might need to adjust if your model structure\
+          \ is different.\n\n        if not client.bucket_exists(minio_bucket):\n\
+          \            client.make_bucket(minio_bucket)\n            print(f\"Bucket\
+          \ '{minio_bucket}' created.\")\n\n        client.fput_object(minio_bucket,\
           \ object_name, local_model_path)\n        print(f\"Model '{object_name}'\
           \ uploaded successfully to MinIO bucket '{minio_bucket}'.\")\n\n       \
-          \ kserve_storage_uri = f\"s3://{minio_bucket}/{model_name}\"\n        print(f\"\
-          KServe storage URI for deployment: {kserve_storage_uri}\")\n        return\
-          \ kserve_storage_uri\n\n    except S3Error as err:\n        print(f\"Error\
-          \ uploading to MinIO: {err}\")\n        raise\n    except Exception as e:\n\
-          \        print(f\"An unexpected error occurred during model saving: {e}\"\
-          )\n        raise\n\n"
+          \ # KServe storage URI should point to the directory containing the model\
+          \ artifact\n        kserve_storage_uri = f\"s3://{minio_bucket}/{model_name}\"\
+          \n        print(f\"KServe storage URI for deployment: {kserve_storage_uri}\"\
+          )\n        return kserve_storage_uri\n\n    except S3Error as err:\n   \
+          \     print(f\"Error uploading to MinIO: {err}\")\n        raise\n    except\
+          \ Exception as e:\n        print(f\"An unexpected error occurred during\
+          \ model saving: {e}\")\n        raise\n\n"
         image: python:3.9-slim
 pipelineInfo:
   description: A pipeline to prepare data, train, save, deploy, and test a simple
@@ -309,6 +404,8 @@ root:
         - train-and-save-model
         inputs:
           parameters:
+            minio_endpoint:
+              componentInputParameter: minio_endpoint
             model_name:
               componentInputParameter: model_name
             model_storage_uri:
@@ -337,7 +434,7 @@ root:
           parameters:
             model_serving_url:
               taskOutputParameter:
-                outputParameterKey: inferenceservice_url_output
+                outputParameterKey: Output
                 producerTask: deploy-model
         taskInfo:
           name: test-prediction
@@ -362,8 +459,7 @@ root:
               runtimeValue:
                 constant: mlpipeline
             minio_endpoint:
-              runtimeValue:
-                constant: minio-service.kubeflow:9000
+              componentInputParameter: minio_endpoint
             minio_secret_key:
               runtimeValue:
                 constant: minio123
@@ -376,6 +472,10 @@ root:
           name: train-and-save-model
   inputDefinitions:
     parameters:
+      minio_endpoint:
+        defaultValue: http://minio-service.kubeflow:9000
+        isOptional: true
+        parameterType: STRING
       model_name:
         defaultValue: my-sklearn-regression-model
         isOptional: true
